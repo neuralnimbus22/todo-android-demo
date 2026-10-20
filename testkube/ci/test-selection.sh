@@ -164,7 +164,7 @@ pick() {
   while :; do
     if testkube download artifact "$run_id" selection.json "$STATE" >/dev/null 2>&1 && [ -s "$STATE/selection.json" ]; then
       echo
-      print_decisions "$STATE/selection.json"
+      print_decisions "$STATE/selection.json" || echo "The agent's decisions in selection.json could not be read."
       return 0
     fi
     st=$(status_of "$run_id" 2>/dev/null || echo unknown)
