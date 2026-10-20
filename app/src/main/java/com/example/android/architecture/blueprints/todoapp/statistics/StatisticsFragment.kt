@@ -19,10 +19,8 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
-import com.example.android.architecture.blueprints.todoapp.R
 import com.example.android.architecture.blueprints.todoapp.TodoViewModelFactory
 import com.example.android.architecture.blueprints.todoapp.databinding.StatisticsFragBinding
 import com.example.android.architecture.blueprints.todoapp.util.setupRefreshLayout
@@ -40,11 +38,8 @@ class StatisticsFragment : Fragment() {
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
-    ): View? {
-        viewDataBinding = DataBindingUtil.inflate(
-            inflater, R.layout.statistics_frag, container,
-            false
-        )
+    ): View {
+        viewDataBinding = StatisticsFragBinding.inflate(inflater, container, false)
         return viewDataBinding.root
     }
 
@@ -53,5 +48,8 @@ class StatisticsFragment : Fragment() {
         viewDataBinding.viewmodel = viewModel
         viewDataBinding.lifecycleOwner = this.viewLifecycleOwner
         this.setupRefreshLayout(viewDataBinding.refreshLayout)
+        // The numbers can go stale while the screen sits in the back stack, so load
+        // them again every time it opens.
+        viewModel.refresh()
     }
 }
