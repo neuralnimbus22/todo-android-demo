@@ -21,6 +21,7 @@ import androidx.fragment.app.testing.launchFragmentInContainer
 import androidx.test.core.app.ApplicationProvider.getApplicationContext
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.IdlingRegistry
+import androidx.test.espresso.action.ViewActions.swipeDown
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.withId
@@ -33,6 +34,7 @@ import com.example.android.architecture.blueprints.todoapp.data.Task
 import com.example.android.architecture.blueprints.todoapp.data.source.FakeRepository
 import com.example.android.architecture.blueprints.todoapp.data.source.TasksRepository
 import com.example.android.architecture.blueprints.todoapp.util.DataBindingIdlingResource
+import com.example.android.architecture.blueprints.todoapp.util.eventually
 import com.example.android.architecture.blueprints.todoapp.util.monitorFragment
 import com.example.android.architecture.blueprints.todoapp.util.saveTaskBlocking
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -103,5 +105,29 @@ class StatisticsFragmentTest {
         onView(withId(R.id.stats_completed_text)).check(matches(isDisplayed()))
         onView(withId(R.id.stats_completed_text))
             .check(matches(withText(expectedCompletedTaskText)))
+    }
+
+    @Test
+    fun pullToRefresh_updatesTheNumbers() {
+        // Given one active and one completed task on the statistics screen
+        repository.apply {
+            saveTaskBlocking(Task("Title1", "Description1", false))
+            saveTaskBlocking(Task("Title2", "Description2", true))
+        }
+        val scenario = launchFragmentInContainer<StatisticsFragment>(Bundle(), R.style.AppTheme)
+        dataBindingIdlingResource.monitorFragment(scenario)
+        val context = getApplicationContext<Context>()
+        onView(withId(R.id.stats_completed_text))
+            .check(matches(withText(context.getString(R.string.statistics_completed_tasks, 50.0f))))
+
+        // When another task is completed elsewhere and the user pulls to refresh
+        repository.saveTaskBlocking(Task("Title3", "Description3", true))
+        onView(withId(R.id.refresh_layout)).perform(swipeDown())
+
+        // Then the numbers include the new task
+        val expected = context.getString(R.string.statistics_completed_tasks, 100f * 2 / 3)
+        eventually {
+            onView(withId(R.id.stats_completed_text)).check(matches(withText(expected)))
+        }
     }
 }

@@ -17,6 +17,7 @@ package com.example.android.architecture.blueprints.todoapp.taskdetail
 
 import androidx.fragment.app.testing.launchFragmentInContainer
 import androidx.test.espresso.Espresso.onView
+import androidx.test.espresso.action.ViewActions.swipeDown
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.ViewMatchers.isChecked
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
@@ -29,6 +30,7 @@ import com.example.android.architecture.blueprints.todoapp.ServiceLocator
 import com.example.android.architecture.blueprints.todoapp.data.Task
 import com.example.android.architecture.blueprints.todoapp.data.source.FakeRepository
 import com.example.android.architecture.blueprints.todoapp.data.source.TasksRepository
+import com.example.android.architecture.blueprints.todoapp.util.eventually
 import com.example.android.architecture.blueprints.todoapp.util.saveTaskBlocking
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import org.hamcrest.core.IsNot.not
@@ -98,5 +100,24 @@ class TaskDetailFragmentTest {
         // and make sure the "active" checkbox is shown unchecked
         onView(withId(R.id.task_detail_complete_checkbox)).check(matches(isDisplayed()))
         onView(withId(R.id.task_detail_complete_checkbox)).check(matches(isChecked()))
+    }
+
+    @Test
+    fun pullToRefresh_showsTheLatestTask() {
+        // GIVEN - A task shown on the details screen
+        val task = Task("Old title", "AndroidX Rocks", false)
+        repository.saveTaskBlocking(task)
+        val bundle = TaskDetailFragmentArgs(task.id).toBundle()
+        launchFragmentInContainer<TaskDetailFragment>(bundle, R.style.AppTheme)
+        onView(withId(R.id.task_detail_title_text)).check(matches(withText("Old title")))
+
+        // WHEN - The task changes in the repository and the user pulls to refresh
+        repository.saveTaskBlocking(Task("New title", "AndroidX Rocks", false, task.id))
+        onView(withId(R.id.refresh_layout)).perform(swipeDown())
+
+        // THEN - The screen shows the latest title
+        eventually {
+            onView(withId(R.id.task_detail_title_text)).check(matches(withText("New title")))
+        }
     }
 }
