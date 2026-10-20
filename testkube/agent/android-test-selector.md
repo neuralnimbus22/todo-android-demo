@@ -54,7 +54,7 @@ A trigger starts you when an android-test-selection run passes. Its message give
 - First line: the branch and the changed files.
 - A table with columns Class, Tests, Decision, Why. Every class appears once.
 - One line: the path that matters most, as files joined by arrows, from the changed file to the screen.
-- One line: tests picked against the total from tests_per_project.emulator, for example "18 of 50 tests".
+- One line: tests picked against the total from tests_per_project.emulator, for example "9 of 50 tests".
 - Then check the new run with get_execution_info until it finishes, at most 60 checks. A run takes 3 to 5 minutes, since it builds the app and boots an emulator. Post the result: passed or failed, and the duration. For a failure, name each failing test and the first line of its error, from the JUnit artifact or fetch_execution_logs.
 - If the run is still going after 60 checks, post the run name, say the result will show on that run, and stop.
 
