@@ -74,6 +74,13 @@
                         android:imeOptions="flagNoExtractUi"
                         android:text="@={viewmodel.description}" />
 
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingTop="8dp"
+                        android:text="@string/add_task_tip"
+                        android:textAppearance="?android:attr/textAppearanceSmall" />
+
                 </LinearLayout>
             </ScrollView>
         </com.example.android.architecture.blueprints.todoapp.ScrollChildSwipeRefreshLayout>
