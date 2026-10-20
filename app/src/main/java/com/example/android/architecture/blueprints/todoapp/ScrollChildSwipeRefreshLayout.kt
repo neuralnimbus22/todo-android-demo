@@ -18,6 +18,8 @@ package com.example.android.architecture.blueprints.todoapp
 import android.content.Context
 import android.util.AttributeSet
 import android.view.View
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 
 /**
@@ -35,6 +37,12 @@ class ScrollChildSwipeRefreshLayout @JvmOverloads constructor(
 
     var scrollUpChild: View? = null
 
-    override fun canChildScrollUp() =
-        scrollUpChild?.canScrollVertically(-1) ?: super.canChildScrollUp()
+    override fun canChildScrollUp(): Boolean {
+        val list = scrollUpChild as? RecyclerView ?: return true
+        // After a fling the list can stop a few pixels below the top. Only let a pull
+        // refresh when the first row is fully in view.
+        val layoutManager = list.layoutManager as? LinearLayoutManager
+        return list.canScrollVertically(-1) ||
+            (layoutManager?.findFirstCompletelyVisibleItemPosition() ?: 0) > 0
+    }
 }
