@@ -1,0 +1,64 @@
+version: 2.1
+
+# Runs only the Espresso tests a change needs, picked by an AI agent in Testkube.
+#
+# On every push to a demo/ branch, the selected-espresso-tests job:
+#   1. starts android-test-selection in Testkube, which traces the change to the test
+#      classes that reach it (no AI),
+#   2. waits for the android-test-selector agent, which picks the classes and starts
+#      espresso-ui-selected with only those, on an Android emulator in the cluster,
+#   3. follows that run, fails when it fails, and stores its JUnit results here.
+#
+# Setup: add TESTKUBE_API_KEY under Project Settings > Environment Variables. It is a
+# Testkube API token with Run access to the environment below.
+
+jobs:
+  selected-espresso-tests:
+    docker:
+      - image: cimg/base:2026.10
+    resource_class: small
+    environment:
+      TESTKUBE_VERSION: 2.14.0
+      TESTKUBE_ORG_ID: tkcorg_b5ace2135f138dc8
+      TESTKUBE_ENV_ID: tkcenv_362177294460621a
+    steps:
+      - checkout
+      - run:
+          name: Install the Testkube CLI
+          command: curl -sSLf https://get.testkube.io | sh
+      - run:
+          name: Connect to Testkube
+          command: |
+            if [ -z "${TESTKUBE_API_KEY:-}" ]; then
+              echo "TESTKUBE_API_KEY is not set. Add it under Project Settings > Environment Variables."
+              exit 1
+            fi
+            testkube set context --org-id "$TESTKUBE_ORG_ID" --env-id "$TESTKUBE_ENV_ID" -c cloud -k "$TESTKUBE_API_KEY"
+      - run:
+          name: Trace the change to the test classes
+          command: testkube/ci/test-selection.sh trace
+      - run:
+          name: Wait for the AI agent to pick the tests
+          command: testkube/ci/test-selection.sh pick
+      - run:
+          name: Run the picked tests on the emulator
+          no_output_timeout: 30m
+          command: testkube/ci/test-selection.sh run
+      - run:
+          name: Collect the test results
+          when: always
+          command: testkube/ci/test-selection.sh report
+      - store_test_results:
+          path: test-results/junit
+          when: always
+      - store_artifacts:
+          path: test-results
+          when: always
+
+workflows:
+  test-selection:
+    jobs:
+      - selected-espresso-tests:
+          filters:
+            branches:
+              only: /^demo\/.*/

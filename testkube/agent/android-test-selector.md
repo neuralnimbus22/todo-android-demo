@@ -42,7 +42,7 @@ A trigger starts you when an android-test-selection run passes. Its message give
 - Changed files of kind docs, other, other_variant or unit_test pick nothing on their own. If they are the whole change, say so in one line.
 
 3. Run and record
-- If nothing is picked, start no run and say that no instrumented test reaches this change.
+- If nothing is picked, start no run. Call update_execution_tags on the android-test-selection run with the tags it already has plus selection=none, so CI knows no run is coming. Then say that no instrumented test reaches this change.
 - Otherwise call run_workflow for espresso-ui-selected with config:
   branch = the branch from step 1
   classes = the picked classes, fully qualified, separated by commas with no spaces. Use an empty string to run everything.

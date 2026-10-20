@@ -11,10 +11,23 @@ per-change test selection with Testkube on a mobile app. `README.md` explains th
   Never merge them, never delete them, never rebase them without a reason.
 - `demo/refresh-layout-fix` contains a deliberate regression. Its two failing
   pull-to-refresh tests are the point of that branch. Do not fix it.
-- A push to any `demo/` branch starts `android-test-selection` in Testkube through
-  `.github/workflows/test-selection.yml`, and each run costs one AI agent chat.
-  Pushing a demo branch under a new `demo/` name is the way to start the flow again.
+- A push to any `demo/` branch starts the CircleCI job in `.circleci/config.yml`. It starts
+  `android-test-selection` in Testkube, waits for the agent's emulator run, and fails when
+  that run fails. Each run costs one AI agent chat. Rerunning the CircleCI job, or pushing a
+  demo branch under a new `demo/` name, starts the flow again.
+- CircleCI reads `.circleci/config.yml` from the branch it builds, so a new `demo/` branch
+  must start from a `main` that has it. To bring an older branch up to date, merge `main`
+  into it. Do not rebase.
+- `.github/workflows/test-selection.yml` runs only by hand. Keep it that way, or a push
+  starts two agent chats.
 - Never force push to `main`.
+
+### CI
+- The CircleCI job reads the Testkube key from the `TESTKUBE_API_KEY` project environment
+  variable. Never put a key or token in this repo.
+- `testkube/ci/test-selection.sh` finds the agent's run by its `evidence` tag, and treats
+  `selection=none` on the trace run as "nothing to run". Those tags come from the agent
+  instructions in `testkube/agent/android-test-selector.md`. Change them together.
 
 ### Test selection
 - `testkube/tracer/trace-android.mjs` is read from `main` by the `android-test-selection`
