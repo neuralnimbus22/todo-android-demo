@@ -104,6 +104,9 @@
                         android:layout_height="wrap_content"
                         android:layout_below="@id/task_detail_title_text"
                         android:layout_toRightOf="@id/task_detail_complete_checkbox"
+                        android:ellipsize="end"
+                        android:lineSpacingExtra="2dp"
+                        android:maxLines="12"
                         android:paddingTop="1dp"
                         android:text="@{viewmodel.task.description}"
                         android:textAppearance="?android:attr/textAppearanceMedium" />
