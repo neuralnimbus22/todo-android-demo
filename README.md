@@ -1,3 +1,26 @@
+# Android to-do sample for AI test selection in Testkube
+
+This repository is a copy of the [Android Architecture Blueprints](https://github.com/android/architecture-samples) to-do app, `views` branch, commit `32cd12f`, under the Apache License 2.0. It is used to show test selection with Testkube on a mobile app: for each change, Testkube works out which Espresso test classes the change reaches, an AI agent decides which of them to run, and Testkube runs only those on an Android emulator inside a Kubernetes cluster.
+
+## How it works
+
+1. A push to a `demo/` branch starts `.github/workflows/test-selection.yml`. It starts the `android-test-selection` workflow in Testkube for that branch.
+2. `android-test-selection` lists the changed files and runs `testkube/tracer/trace-android.mjs`, taken from `main`. The script follows the change through Kotlin code, layouts, navigation graphs and resources to the screens it reaches, labels every instrumented test class, and saves `impact.json` with the diff. No AI runs in this step.
+3. When that run passes, the AI Agent Trigger `android-test-selection-trigger` starts the `android-test-selector` agent. The agent reads `impact.json` and the diff, decides every test class with a reason, and starts `espresso-ui-selected` with only the picked classes.
+4. `espresso-ui-selected` builds the app, boots an Android 11 emulator in the cluster, and runs the picked classes with `connectedMockDebugAndroidTest`. JUnit results, the HTML report and logcat are saved with the run.
+
+The Testkube workflows, the trace script and the agent settings are in [`testkube/`](testkube/).
+
+## Changes from the original
+
+- The original GitHub workflows are removed, and `.github/workflows/test-selection.yml` is added.
+- Pull-to-refresh tests are added to `TaskDetailFragmentTest` and `StatisticsFragmentTest`, with a small `eventually` helper in `sharedTest`.
+- `testkube/` is added.
+
+The original README follows.
+
+---
+
 # Android Architecture Blueprints v2
 <p align="center">
 <img src="https://github.com/googlesamples/android-architecture/wiki/images/aab-logov2.png" alt="Illustration by Virginia Poltrack"/>

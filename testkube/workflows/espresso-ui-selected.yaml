@@ -1,0 +1,228 @@
+kind: TestWorkflow
+apiVersion: testworkflows.testkube.io/v1
+metadata:
+  name: espresso-ui-selected
+  labels:
+    app: todo-android
+    purpose: android-test-selection
+    step: run
+    tool: espresso
+    suite: ui
+  annotations:
+    description: Builds the Android app and runs only the Espresso test classes it is given, on an Android emulator inside the cluster. Empty classes runs every instrumented test. Saves the agent's decisions as selection.json when they are passed in.
+spec:
+  config:
+    branch:
+      type: string
+      default: main
+      description: Branch whose app code and tests to run
+    classes:
+      type: string
+      default: ""
+      description: Test classes to run, fully qualified and separated by commas. Empty runs every instrumented test.
+    selection:
+      type: string
+      default: ""
+      description: The agent's decision for every test class, as JSON. Saved with the run as selection.json.
+  content:
+    git:
+      uri: https://github.com/neuralnimbus22/todo-android-demo
+      revision: "{{config.branch}}"
+  concurrency:
+    max: 1
+  pod:
+    volumes:
+      - name: android-cache
+        hostPath:
+          path: /var/lib/testkube-android-cache
+          type: DirectoryOrCreate
+  container:
+    image: eclipse-temurin:11-jdk-jammy
+    workingDir: /data/repo
+    volumeMounts:
+      - name: android-cache
+        mountPath: /cache
+    env:
+      - name: ANDROID_HOME
+        value: /cache/sdk
+      - name: ANDROID_SDK_ROOT
+        value: /cache/sdk
+      - name: GRADLE_USER_HOME
+        value: /cache/gradle
+  execution:
+    target:
+      match:
+        name:
+          - testkube-runner
+  steps:
+    - name: Save the agent's decisions
+      shell: |
+        cat > /data/selection.json <<'SELECTION_EOF'
+        {{config.selection}}
+        SELECTION_EOF
+        if [ -n "$(tr -d '[:space:]' < /data/selection.json)" ]; then
+          echo "Saved the agent's decisions to selection.json"
+          cat /data/selection.json
+        else
+          rm -f /data/selection.json
+          echo "No decisions were passed in, so there is nothing to save"
+        fi
+      artifacts:
+        workingDir: /data
+        paths:
+          - selection.json
+
+    - name: Set up the Android SDK
+      container:
+        image: eclipse-temurin:17-jdk-jammy
+      timeout: 30m
+      shell: |
+        SDK=/cache/sdk
+        mkdir -p "$SDK"
+        exec 9>/cache/sdk.lock
+        flock 9
+        if [ -f "$SDK/.ready" ]; then
+          echo "The Android SDK is already on this node, nothing to download."
+          echo "System image: $(cat "$SDK/.image")"
+          exit 0
+        fi
+        echo "First run on this node: downloading the Android SDK, the emulator and an Android 11 system image."
+        echo "Later runs reuse them from /var/lib/testkube-android-cache on the node."
+        apt-get update -qq
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends unzip curl >/dev/null
+        rm -rf /tmp/clt && mkdir -p /tmp/clt "$SDK/cmdline-tools"
+        for build in 11076708 13114758; do
+          if curl -fsSL -o /tmp/clt.zip "https://dl.google.com/android/repository/commandlinetools-linux-${build}_latest.zip"; then break; fi
+        done
+        unzip -q /tmp/clt.zip -d /tmp/clt
+        rm -rf "$SDK/cmdline-tools/latest"
+        mv /tmp/clt/cmdline-tools "$SDK/cmdline-tools/latest"
+        SDKM="$SDK/cmdline-tools/latest/bin/sdkmanager"
+        yes | "$SDKM" --sdk_root="$SDK" --licenses >/dev/null 2>&1 || true
+        echo "Installing platform-tools, emulator, platforms;android-32, build-tools;30.0.3"
+        "$SDKM" --sdk_root="$SDK" --install "platform-tools" "emulator" "platforms;android-32" "build-tools;30.0.3" > /tmp/sdk.log 2>&1 || { tail -n 30 /tmp/sdk.log; exit 1; }
+        IMAGE="system-images;android-30;aosp_atd;x86_64"
+        echo "Installing $IMAGE"
+        if ! "$SDKM" --sdk_root="$SDK" --install "$IMAGE" > /tmp/img.log 2>&1 || [ ! -d "$SDK/system-images/android-30/aosp_atd/x86_64" ]; then
+          tail -n 10 /tmp/img.log
+          IMAGE="system-images;android-30;default;x86_64"
+          echo "Falling back to $IMAGE"
+          "$SDKM" --sdk_root="$SDK" --install "$IMAGE" > /tmp/img.log 2>&1 || { tail -n 30 /tmp/img.log; exit 1; }
+        fi
+        test -d "$SDK/$(echo "$IMAGE" | tr ';' '/')"
+        test -x "$SDK/emulator/emulator"
+        test -x "$SDK/platform-tools/adb"
+        echo "$IMAGE" > "$SDK/.image"
+        touch "$SDK/.ready"
+        "$SDKM" --sdk_root="$SDK" --list_installed 2>/dev/null | sed -n '/Installed packages/,$p'
+        du -sh "$SDK"
+
+    - name: Boot the emulator, build, and run the selected tests
+      timeout: 40m
+      container:
+        securityContext:
+          privileged: true
+        resources:
+          requests:
+            cpu: "4"
+            memory: 6Gi
+      shell: |
+        set +e
+        stamp() { echo; echo "== $(date +%H:%M:%S) $*"; }
+        export ANDROID_AVD_HOME=/data/avd ANDROID_EMULATOR_HOME=/data/emulator-home
+        export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+        mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_EMULATOR_HOME" /data/results "$GRADLE_USER_HOME"
+        CLASSES="{{config.classes}}"
+
+        stamp "Libraries the emulator needs"
+        DEBS=/cache/debs/jammy
+        if [ ! -f "$DEBS/.ready" ]; then
+          mkdir -p "$DEBS/partial"
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends --download-only -o Dir::Cache::archives="$DEBS" \
+            libpulse0 libnss3 libxcomposite1 libxcursor1 libxi6 libxtst6 libasound2 libgl1 libxdamage1 libxkbfile1 \
+            libxrandr2 libdbus-1-3 libx11-xcb1 libfontconfig1 libbsd0 libxkbcommon0 libegl1 >/dev/null && touch "$DEBS/.ready"
+        fi
+        dpkg -i "$DEBS"/*.deb >/dev/null 2>&1 || { echo "Could not install the emulator libraries"; exit 1; }
+        if [ ! -e /dev/kvm ]; then echo "No /dev/kvm in this pod, so the emulator cannot use hardware acceleration."; exit 1; fi
+        emulator -accel-check | tail -n 2
+
+        stamp "Create a test device (Pixel-sized phone, Android 11)"
+        IMAGE="$(cat "$ANDROID_HOME/.image")"
+        TAG="$(echo "$IMAGE" | cut -d';' -f3)"
+        mkdir -p "$ANDROID_AVD_HOME/test.avd"
+        printf 'avd.ini.encoding=UTF-8\npath=%s/test.avd\ntarget=android-30\n' "$ANDROID_AVD_HOME" > "$ANDROID_AVD_HOME/test.ini"
+        cat > "$ANDROID_AVD_HOME/test.avd/config.ini" <<EOF
+        AvdId=test
+        avd.ini.displayname=test
+        avd.ini.encoding=UTF-8
+        abi.type=x86_64
+        hw.cpu.arch=x86_64
+        hw.cpu.ncore=4
+        hw.ramSize=2048
+        hw.lcd.width=1080
+        hw.lcd.height=2340
+        hw.lcd.density=440
+        hw.keyboard=yes
+        hw.gpu.enabled=yes
+        hw.gpu.mode=swiftshader_indirect
+        disk.dataPartition.size=2G
+        image.sysdir.1=$(echo "$IMAGE" | tr ';' '/')/
+        tag.id=$TAG
+        PlayStore.enabled=false
+        EOF
+        echo "Device: $IMAGE"
+
+        stamp "Boot the emulator in the background"
+        emulator -avd test -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect \
+          -camera-back none -camera-front none -memory 2048 -cores 4 > /data/results/emulator.log 2>&1 &
+        EMU_PID=$!
+
+        stamp "Build the app and the test APK while it boots"
+        printf 'org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8\nkotlin.daemon.jvmargs=-Xmx1536m\norg.gradle.caching=true\n' > "$GRADLE_USER_HOME/gradle.properties"
+        ./gradlew --console=plain -q assembleMockDebug assembleMockDebugAndroidTest
+        BUILD_RC=$?
+        if [ $BUILD_RC -ne 0 ]; then
+          echo "The build failed, so no tests ran."
+          adb emu kill >/dev/null 2>&1; ./gradlew --stop >/dev/null 2>&1
+          exit $BUILD_RC
+        fi
+
+        stamp "Wait for the emulator to finish booting"
+        BOOTED=no
+        for i in $(seq 1 150); do
+          if ! kill -0 $EMU_PID 2>/dev/null; then echo "The emulator stopped:"; tail -n 40 /data/results/emulator.log; exit 1; fi
+          if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then BOOTED=yes; break; fi
+          sleep 2
+        done
+        if [ "$BOOTED" != yes ]; then echo "The emulator did not boot in 5 minutes:"; tail -n 40 /data/results/emulator.log; exit 1; fi
+        adb shell settings put global window_animation_scale 0
+        adb shell settings put global transition_animation_scale 0
+        adb shell settings put global animator_duration_scale 0
+        adb shell input keyevent 82
+        echo "Booted: $(adb shell getprop ro.build.version.release | tr -d '\r') (API $(adb shell getprop ro.build.version.sdk | tr -d '\r'))"
+
+        if [ -n "$CLASSES" ]; then
+          stamp "Run the selected test classes"
+          echo "$CLASSES" | tr ',' '\n' | sed 's/^/  /'
+          ./gradlew --console=plain connectedMockDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=$CLASSES"
+        else
+          stamp "Run every instrumented test"
+          ./gradlew --console=plain connectedMockDebugAndroidTest
+        fi
+        TEST_RC=$?
+
+        stamp "Collect the results"
+        adb logcat -d > /data/results/logcat.txt 2>/dev/null
+        find app/build/outputs/androidTest-results/connected -name 'TEST-*.xml' -exec sh -c 'i=0; for f; do i=$((i+1)); cp "$f" "/data/results/junit-$i.xml"; done' sh {} + 2>/dev/null
+        if [ -d app/build/reports/androidTests/connected ]; then cp -r app/build/reports/androidTests/connected /data/results/html-report; fi
+        echo "JUnit files: $(ls /data/results/junit-*.xml 2>/dev/null | wc -l)"
+        adb emu kill >/dev/null 2>&1
+        for i in $(seq 1 20); do kill -0 $EMU_PID 2>/dev/null || break; sleep 1; done
+        kill -9 $EMU_PID >/dev/null 2>&1
+        ./gradlew --stop >/dev/null 2>&1
+        exit $TEST_RC
+      artifacts:
+        workingDir: /data/results
+        paths:
+          - "**/*"

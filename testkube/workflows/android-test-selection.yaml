@@ -1,0 +1,53 @@
+kind: TestWorkflow
+apiVersion: testworkflows.testkube.io/v1
+metadata:
+  name: android-test-selection
+  labels:
+    app: todo-android
+    purpose: android-test-selection
+    step: evidence
+  annotations:
+    description: Traces a branch's change in the Android app to the Espresso test classes that reach it and saves impact.json for the selector agent. No AI runs here.
+spec:
+  config:
+    branch:
+      type: string
+      default: main
+      description: Branch to trace
+    base:
+      type: string
+      default: main
+      description: Branch to compare against. The trace rules are taken from this branch too.
+  container:
+    image: node:22-bookworm
+    workingDir: /data
+  execution:
+    target:
+      match:
+        name:
+          - testkube-runner
+  steps:
+    - name: Check out the branch and list what changed
+      shell: |
+        git clone --quiet https://github.com/neuralnimbus22/todo-android-demo repo
+        cd repo
+        git checkout --quiet "{{config.branch}}"
+        git diff --name-only "origin/{{config.base}}...HEAD" > /data/changed.txt
+        git diff "origin/{{config.base}}...HEAD" > /data/change.diff
+        echo "Changed on {{config.branch}} against {{config.base}}:"
+        sed 's/^/  /' /data/changed.txt
+
+    - name: Trace the change to the test classes
+      shell: |
+        # The rules come from the base branch, so a change cannot rewrite the rules that judge it.
+        mkdir -p /data/tools
+        git -C /data/repo show "origin/{{config.base}}:testkube/tracer/trace-android.mjs" > /data/tools/trace-android.mjs
+        node /data/tools/trace-android.mjs --root /data/repo --changed /data/changed.txt --diff /data/change.diff \
+          --variant mockDebug --out /data/impact.json \
+          --base "{{config.base}}" --branch "{{config.branch}}" --head "$(git -C /data/repo rev-parse --short HEAD)"
+      artifacts:
+        workingDir: /data
+        paths:
+          - impact.json
+          - change.diff
+          - changed.txt
