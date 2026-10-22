@@ -78,38 +78,40 @@ spec:
       timeout: 30m
       shell: |
         SDK=/cache/sdk
+        # The full Android 11 image. The smaller automated-test image does not show the
+        # app in screenshots, so it is not used.
+        IMAGE="system-images;android-30;default;x86_64"
+        IMAGE_DIR="$SDK/system-images/android-30/default/x86_64"
+        SDKM="$SDK/cmdline-tools/latest/bin/sdkmanager"
         mkdir -p "$SDK"
         exec 9>/cache/sdk.lock
         flock 9
-        if [ -f "$SDK/.ready" ]; then
+        if [ -f "$SDK/.ready" ] && [ -d "$IMAGE_DIR" ]; then
+          echo "$IMAGE" > "$SDK/.image"
           echo "The Android SDK is already on this node, nothing to download."
-          echo "System image: $(cat "$SDK/.image")"
+          echo "System image: $IMAGE"
           exit 0
         fi
-        echo "First run on this node: downloading the Android SDK, the emulator and an Android 11 system image."
-        echo "Later runs reuse them from /var/lib/testkube-android-cache on the node."
-        apt-get update -qq
-        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends unzip curl >/dev/null
-        rm -rf /tmp/clt && mkdir -p /tmp/clt "$SDK/cmdline-tools"
-        for build in 11076708 13114758; do
-          if curl -fsSL -o /tmp/clt.zip "https://dl.google.com/android/repository/commandlinetools-linux-${build}_latest.zip"; then break; fi
-        done
-        unzip -q /tmp/clt.zip -d /tmp/clt
-        rm -rf "$SDK/cmdline-tools/latest"
-        mv /tmp/clt/cmdline-tools "$SDK/cmdline-tools/latest"
-        SDKM="$SDK/cmdline-tools/latest/bin/sdkmanager"
-        yes | "$SDKM" --sdk_root="$SDK" --licenses >/dev/null 2>&1 || true
-        echo "Installing platform-tools, emulator, platforms;android-32, build-tools;30.0.3"
-        "$SDKM" --sdk_root="$SDK" --install "platform-tools" "emulator" "platforms;android-32" "build-tools;30.0.3" > /tmp/sdk.log 2>&1 || { tail -n 30 /tmp/sdk.log; exit 1; }
-        IMAGE="system-images;android-30;aosp_atd;x86_64"
-        echo "Installing $IMAGE"
-        if ! "$SDKM" --sdk_root="$SDK" --install "$IMAGE" > /tmp/img.log 2>&1 || [ ! -d "$SDK/system-images/android-30/aosp_atd/x86_64" ]; then
-          tail -n 10 /tmp/img.log
-          IMAGE="system-images;android-30;default;x86_64"
-          echo "Falling back to $IMAGE"
-          "$SDKM" --sdk_root="$SDK" --install "$IMAGE" > /tmp/img.log 2>&1 || { tail -n 30 /tmp/img.log; exit 1; }
+        if [ ! -f "$SDK/.ready" ]; then
+          echo "First run on this node: downloading the Android SDK and the emulator."
+          echo "Later runs reuse them from /var/lib/testkube-android-cache on the node."
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends unzip curl >/dev/null
+          rm -rf /tmp/clt && mkdir -p /tmp/clt "$SDK/cmdline-tools"
+          for build in 11076708 13114758; do
+            if curl -fsSL -o /tmp/clt.zip "https://dl.google.com/android/repository/commandlinetools-linux-${build}_latest.zip"; then break; fi
+          done
+          unzip -q /tmp/clt.zip -d /tmp/clt
+          rm -rf "$SDK/cmdline-tools/latest"
+          mv /tmp/clt/cmdline-tools "$SDK/cmdline-tools/latest"
+          yes | "$SDKM" --sdk_root="$SDK" --licenses >/dev/null 2>&1 || true
+          echo "Installing platform-tools, emulator, platforms;android-32, build-tools;30.0.3"
+          "$SDKM" --sdk_root="$SDK" --install "platform-tools" "emulator" "platforms;android-32" "build-tools;30.0.3" > /tmp/sdk.log 2>&1 || { tail -n 30 /tmp/sdk.log; exit 1; }
         fi
-        test -d "$SDK/$(echo "$IMAGE" | tr ';' '/')"
+        echo "Installing the system image $IMAGE (once per node)"
+        yes | "$SDKM" --sdk_root="$SDK" --licenses >/dev/null 2>&1 || true
+        "$SDKM" --sdk_root="$SDK" --install "$IMAGE" > /tmp/img.log 2>&1 || { tail -n 30 /tmp/img.log; exit 1; }
+        test -d "$IMAGE_DIR"
         test -x "$SDK/emulator/emulator"
         test -x "$SDK/platform-tools/adb"
         echo "$IMAGE" > "$SDK/.image"
@@ -207,6 +209,12 @@ spec:
         adb shell settings put global transition_animation_scale 0
         adb shell settings put global animator_duration_scale 0
         adb shell input keyevent 82
+        # Keep the screen on, so the screenshots show the app. Without this the emulator
+        # turns its display off after a while, even though the tests keep running.
+        adb shell svc power stayon true
+        adb shell settings put system screen_off_timeout 1800000
+        adb shell input keyevent KEYCODE_WAKEUP
+        adb shell wm dismiss-keyguard >/dev/null 2>&1
         echo "Booted: $(adb shell getprop ro.build.version.release | tr -d '\r') (API $(adb shell getprop ro.build.version.sdk | tr -d '\r'))"
 
         stamp "Take screenshots of the app while the tests run"
