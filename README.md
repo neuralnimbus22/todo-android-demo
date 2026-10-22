@@ -4,16 +4,19 @@ This repository is a copy of the [Android Architecture Blueprints](https://githu
 
 ## How it works
 
-1. A push to a `demo/` branch starts `.github/workflows/test-selection.yml`. It starts the `android-test-selection` workflow in Testkube for that branch.
+1. A push to a `demo/` branch starts the `selected-espresso-tests` job in CircleCI, defined in `.circleci/config.yml`. The job starts the `android-test-selection` workflow in Testkube for that branch and waits for the result.
 2. `android-test-selection` lists the changed files and runs `testkube/tracer/trace-android.mjs`, taken from `main`. The script follows the change through Kotlin code, layouts, navigation graphs and resources to the screens it reaches, labels every instrumented test class, and saves `impact.json` with the diff. No AI runs in this step.
 3. When that run passes, the AI Agent Trigger `android-test-selection-trigger` starts the `android-test-selector` agent. The agent reads `impact.json` and the diff, decides every test class with a reason, and starts `espresso-ui-selected` with only the picked classes.
 4. `espresso-ui-selected` builds the app, boots an Android 11 emulator in the cluster, and runs the picked classes with `connectedMockDebugAndroidTest`. JUnit results, the HTML report and logcat are saved with the run.
+5. The CircleCI job follows that run and passes or fails with it. It prints the agent's decisions and stores the JUnit results and the Android test report, so failing tests show in CircleCI's Tests tab. If the agent picks nothing, the job passes without an emulator run.
 
-The Testkube workflows, the trace script and the agent settings are in [`testkube/`](testkube/).
+The CircleCI job needs a `TESTKUBE_API_KEY` environment variable in the CircleCI project settings: a Testkube API token with Run access to the environment. `.github/workflows/test-selection.yml` starts the same flow from GitHub Actions, by hand only, and does not wait for the result.
+
+The Testkube workflows, the trace script, the CI script and the agent settings are in [`testkube/`](testkube/).
 
 ## Changes from the original
 
-- The original GitHub workflows are removed, and `.github/workflows/test-selection.yml` is added.
+- The original GitHub workflows are removed. `.circleci/config.yml` and a manual `.github/workflows/test-selection.yml` are added.
 - Pull-to-refresh tests are added to `TaskDetailFragmentTest` and `StatisticsFragmentTest`, with a small `eventually` helper in `sharedTest`.
 - `testkube/` is added.
 

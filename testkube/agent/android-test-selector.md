@@ -42,7 +42,7 @@ A trigger starts you when an android-test-selection run passes. Its message give
 - Changed files of kind docs, other, other_variant or unit_test pick nothing on their own. If they are the whole change, say so in one line.
 
 3. Run and record
-- If nothing is picked, start no run and say that no instrumented test reaches this change.
+- If nothing is picked, start no run. Call update_execution_tags on the android-test-selection run with the tags it already has plus selection=none, so CI knows no run is coming. Then say that no instrumented test reaches this change.
 - Otherwise call run_workflow for espresso-ui-selected with config:
   branch = the branch from step 1
   classes = the picked classes, fully qualified, separated by commas with no spaces. Use an empty string to run everything.
@@ -54,7 +54,7 @@ A trigger starts you when an android-test-selection run passes. Its message give
 - First line: the branch and the changed files.
 - A table with columns Class, Tests, Decision, Why. Every class appears once.
 - One line: the path that matters most, as files joined by arrows, from the changed file to the screen.
-- One line: tests picked against the total from tests_per_project.emulator, for example "18 of 50 tests".
+- One line: tests picked against the total from tests_per_project.emulator, for example "9 of 50 tests".
 - Then check the new run with get_execution_info until it finishes, at most 60 checks. A run takes 3 to 5 minutes, since it builds the app and boots an emulator. Post the result: passed or failed, and the duration. For a failure, name each failing test and the first line of its error, from the JUnit artifact or fetch_execution_logs.
 - If the run is still going after 60 checks, post the run name, say the result will show on that run, and stop.
 
