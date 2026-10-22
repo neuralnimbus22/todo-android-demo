@@ -74,8 +74,9 @@ for path in files:
             problem = case.find("error")
         if problem is not None:
             lines = [l.strip() for l in (problem.get("message") or problem.text or "").strip().splitlines()]
-            # Espresso puts the useful part on its Expected: and Got: lines.
-            detail = [l for l in lines if l.startswith(("Expected:", "Got:"))] or lines[:1] or ["no message"]
+            # Espresso puts the useful part on its Expected: and Got: lines, often twice.
+            detail = list(dict.fromkeys(l for l in lines if l.startswith(("Expected:", "Got:"))))
+            detail = detail or lines[:1] or ["no message"]
             name = case.get("classname", "").rsplit(".", 1)[-1] + "." + case.get("name", "")
             failed.append((name, [l[:200] for l in detail]))
         elif case.find("skipped") is not None:
