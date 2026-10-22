@@ -10,8 +10,9 @@
 #           espresso-ui-selected with only those, and tags that run evidence=<trace run>.
 #           If it picks nothing, it tags the trace run selection=none instead.
 #   run     Follows the emulator run to the end. Fails when the run fails.
-#   report  Downloads the JUnit files, the Android test report and the agent's decisions
-#           into test-results/ and prints a summary. It never fails the job on its own.
+#   report  Downloads the JUnit files, the Android test report, the screenshots taken during
+#           the tests and the agent's decisions into test-results/ and prints a summary. It
+#           never fails the job on its own.
 #
 # Needs the testkube CLI with a context already set, jq and python3.
 # Reads BRANCH and COMMIT, or CircleCI's CIRCLE_BRANCH and CIRCLE_SHA1, and
@@ -243,6 +244,7 @@ report() {
   mkdir -p "$RESULTS/junit"
   testkube download artifacts "$run_id" --download-dir "$RESULTS/junit" --mask '^junit-[0-9]+\.xml$' >/dev/null 2>&1
   testkube download artifacts "$run_id" --download-dir "$RESULTS" --mask '^html-report/' >/dev/null 2>&1
+  testkube download artifacts "$run_id" --download-dir "$RESULTS" --mask '^screenshots/' >/dev/null 2>&1
   if [ ! -s "$STATE/selection.json" ]; then
     testkube download artifact "$run_id" selection.json "$STATE" >/dev/null 2>&1
   fi
@@ -255,6 +257,11 @@ report() {
   fi
   echo "$run_name $st."
   summarize_junit "$RESULTS"
+  shots=$(find "$RESULTS/screenshots" -maxdepth 1 -name '*.png' 2>/dev/null | wc -l)
+  failed_shots=$(find "$RESULTS/screenshots/failed" -name '*.png' 2>/dev/null | wc -l)
+  if [ "$shots" -gt 0 ]; then
+    echo "Screenshots of the app during the tests: $shots, from failed tests: $failed_shots. See the Artifacts tab."
+  fi
   if [ -s "$RESULTS/selection.json" ]; then
     echo
     print_decisions "$RESULTS/selection.json"

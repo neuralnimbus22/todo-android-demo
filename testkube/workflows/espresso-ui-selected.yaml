@@ -9,7 +9,7 @@ metadata:
     tool: espresso
     suite: ui
   annotations:
-    description: Builds the Android app and runs only the Espresso test classes it is given, on an Android emulator inside the cluster. Empty classes runs every instrumented test. Saves the agent's decisions as selection.json when they are passed in.
+    description: Builds the Android app and runs only the Espresso test classes it is given, on an Android emulator inside the cluster. Empty classes runs every instrumented test. Saves the agent's decisions as selection.json when they are passed in, and screenshots of the app taken while the tests run.
 spec:
   config:
     branch:
@@ -209,6 +209,35 @@ spec:
         adb shell input keyevent 82
         echo "Booted: $(adb shell getprop ro.build.version.release | tr -d '\r') (API $(adb shell getprop ro.build.version.sdk | tr -d '\r'))"
 
+        stamp "Take screenshots of the app while the tests run"
+        # About one screenshot a second, named after the test that is running, up to 4 per
+        # test. They are saved with the run, and the ones from failed tests also go to
+        # screenshots/failed.
+        SHOTS=/data/results/screenshots
+        mkdir -p "$SHOTS"
+        adb logcat -c
+        adb logcat -v raw -s TestRunner:I > /data/testrunner.log 2>/dev/null &
+        LOGCAT_PID=$!
+        touch /data/capturing
+        (
+          last=""; n=0; k=0
+          while [ -f /data/capturing ]; do
+            line=$(grep '^started: ' /data/testrunner.log 2>/dev/null | tail -n 1)
+            if [ -n "$line" ]; then
+              method=${line#started: }; method=${method%%(*}
+              cls=${line%)*}; cls=${cls##*.}
+              name="$cls-$method"
+              if [ "$name" != "$last" ]; then last=$name; n=$((n+1)); k=0; fi
+              if [ $k -lt 4 ]; then
+                k=$((k+1))
+                adb exec-out screencap -p > "$SHOTS/$(printf %02d $n)-$name-$k.png" 2>/dev/null
+              fi
+            fi
+            sleep 1
+          done
+        ) &
+        SHOT_PID=$!
+
         if [ -n "$CLASSES" ]; then
           stamp "Run the selected test classes"
           echo "$CLASSES" | tr ',' '\n' | sed 's/^/  /'
@@ -218,12 +247,25 @@ spec:
           ./gradlew --console=plain connectedMockDebugAndroidTest
         fi
         TEST_RC=$?
+        rm -f /data/capturing
+        wait $SHOT_PID 2>/dev/null
+        kill $LOGCAT_PID 2>/dev/null
 
         stamp "Collect the results"
         adb logcat -d > /data/results/logcat.txt 2>/dev/null
         find app/build/outputs/androidTest-results/connected -name 'TEST-*.xml' -exec sh -c 'i=0; for f; do i=$((i+1)); cp "$f" "/data/results/junit-$i.xml"; done' sh {} + 2>/dev/null
         if [ -d app/build/reports/androidTests/connected ]; then cp -r app/build/reports/androidTests/connected /data/results/html-report; fi
         echo "JUnit files: $(ls /data/results/junit-*.xml 2>/dev/null | wc -l)"
+        for f in /data/results/junit-*.xml; do
+          [ -f "$f" ] || continue
+          grep -B1 '<failure' "$f" | grep -o 'name="[^"]*" classname="[^"]*"' | while read -r pair; do
+            m=$(echo "$pair" | sed -E 's/^name="([^"]*)".*/\1/')
+            c=$(echo "$pair" | sed -E 's/.*classname="([^"]*)"$/\1/'); c=${c##*.}
+            mkdir -p "$SHOTS/failed"
+            cp "$SHOTS"/*-"$c-$m"-*.png "$SHOTS/failed/" 2>/dev/null
+          done
+        done
+        echo "Screenshots: $(ls "$SHOTS"/*.png 2>/dev/null | wc -l), from failed tests: $(ls "$SHOTS"/failed/*.png 2>/dev/null | wc -l)"
         adb emu kill >/dev/null 2>&1
         for i in $(seq 1 20); do kill -0 $EMU_PID 2>/dev/null || break; sleep 1; done
         kill -9 $EMU_PID >/dev/null 2>&1
