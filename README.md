@@ -18,6 +18,7 @@ The Testkube workflows, the trace script, the CI script and the agent settings a
 
 - The original GitHub workflows are removed. `.circleci/config.yml` and a manual `.github/workflows/test-selection.yml` are added.
 - Pull-to-refresh tests are added to `TaskDetailFragmentTest` and `StatisticsFragmentTest`, with a small `eventually` helper in `sharedTest`.
+- `AppNavigationTest.drawerNavigationFromTasksToStatistics` waits for the drawer to finish closing before it checks that the drawer is closed. It used to race the drawer animation and fail now and then.
 - `testkube/` is added.
 
 The original README follows.
