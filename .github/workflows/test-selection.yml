@@ -1,26 +1,27 @@
-name: Test Selection on Demo Branches
+name: Test Selection (manual)
 
-# Starts the per-change test selection flow in Testkube when a demo branch is
-# pushed. This job only starts the first Testkube workflow, android-test-selection,
-# for the pushed branch. Everything after that runs in Testkube on its own:
-#   1. android-test-selection lists the change and traces it to the Espresso
-#      test classes that reach it (no AI).
-#   2. When it passes, the AI Agent Trigger android-test-selection-trigger starts
-#      the android-test-selector agent with that run's ID.
-#   3. The agent decides each test class, starts espresso-ui-selected with only
-#      the picked classes, and reports in the run's AI chat.
+# Starts the per-change test selection flow in Testkube for the branch you pick under
+# "Run workflow". CircleCI already starts the same flow on every push to a demo/ branch
+# and waits for its result (.circleci/config.yml), so this workflow only runs by hand.
+# That way a push starts one AI agent chat, not two.
+#
+# This job only starts the first Testkube workflow, android-test-selection, for the
+# chosen branch. Everything after that runs in Testkube on its own:
+#   1. android-test-selection lists the change and traces it to the Espresso test
+#      classes that reach it (no AI).
+#   2. When it passes, the AI Agent Trigger android-test-selection-trigger starts the
+#      android-test-selector agent with that run's ID.
+#   3. The agent decides each test class, starts espresso-ui-selected with only the
+#      picked classes, and reports in the run's AI chat.
 #
 # The job needs a TESTKUBE_API_TOKEN secret in this repository. Without it the job
 # says so and stops, and nothing else happens.
 
 on:
-  push:
-    branches: ['demo/**']
+  workflow_dispatch:
 
 jobs:
   start-test-selection:
-    # Deleting a branch is also a push. There is nothing to test then.
-    if: ${{ !github.event.deleted }}
     runs-on: ubuntu-latest
     env:
       HAS_TOKEN: ${{ secrets.TESTKUBE_API_TOKEN != '' }}
