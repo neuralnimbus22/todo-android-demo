@@ -129,6 +129,13 @@ spec:
       shell: |
         set +e
         stamp() { echo; echo "== $(date +%H:%M:%S) $*"; }
+        # One emulator run per node at a time. Two runs at once would fight over the
+        # shared Gradle cache and the node's CPUs.
+        exec 8>/cache/emulator-run.lock
+        if ! flock -n 8; then
+          stamp "Wait for the other emulator run on this node to finish"
+          flock 8
+        fi
         export ANDROID_AVD_HOME=/data/avd ANDROID_EMULATOR_HOME=/data/emulator-home
         export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
         mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_EMULATOR_HOME" /data/results "$GRADLE_USER_HOME"
