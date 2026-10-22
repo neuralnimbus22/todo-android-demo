@@ -36,7 +36,7 @@ A trigger starts you when an android-test-selection run passes. Its message give
 - run_everything.required is true: run everything, and name the file and the reason.
 - test_changed or uses_changed_helper: run it.
 - checks_change: run it. The reason names one view it checks, or the changed code it calls, and the file the change touches.
-- opens_reached_screen: read change.diff. Run it only if the change could stop that screen from opening or loading its data. Examples: a new call when the screen opens, a removed null check or try/catch, a changed lifecycle method, a changed inflate, a new required argument. Otherwise skip it, and say in one sentence what the test does on that screen and why the change cannot affect it.
+- opens_reached_screen: read change.diff. Run it only if the change could stop that screen from opening or loading its data. Examples: a new call when the screen opens, a removed null check or try/catch, a changed lifecycle method, a changed inflate call in code, a new required argument, a removed or renamed view ID that code uses. A layout change that only adds a view, changes text or changes styling cannot stop a screen from opening, so it is not a reason to run on its own. When you skip, say in one sentence what the test does on that screen and why the change cannot affect it.
 - not_reached: skip it.
 - A changed file of kind unknown: run everything. When unsure about a class, run it.
 - Changed files of kind docs, other, other_variant or unit_test pick nothing on their own. If they are the whole change, say so in one line.
