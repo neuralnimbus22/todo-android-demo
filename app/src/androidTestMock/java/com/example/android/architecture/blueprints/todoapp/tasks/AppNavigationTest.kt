@@ -41,6 +41,7 @@ import com.example.android.architecture.blueprints.todoapp.data.Task
 import com.example.android.architecture.blueprints.todoapp.data.source.TasksRepository
 import com.example.android.architecture.blueprints.todoapp.util.DataBindingIdlingResource
 import com.example.android.architecture.blueprints.todoapp.util.EspressoIdlingResource
+import com.example.android.architecture.blueprints.todoapp.util.eventually
 import com.example.android.architecture.blueprints.todoapp.util.monitorActivity
 import com.example.android.architecture.blueprints.todoapp.util.saveTaskBlocking
 import org.junit.After
@@ -110,9 +111,12 @@ class AppNavigationTest {
         // Check that statistics screen was opened.
         onView(withId(R.id.statistics_layout)).check(matches(isDisplayed()))
 
-        onView(withId(R.id.drawer_layout))
-            .check(matches(isClosed(Gravity.START))) // Left Drawer should be closed.
-            .perform(open()) // Open Drawer
+        // The drawer slides shut after the screen opens, and Espresso does not wait for that.
+        eventually {
+            onView(withId(R.id.drawer_layout))
+                .check(matches(isClosed(Gravity.START))) // Left Drawer should be closed.
+        }
+        onView(withId(R.id.drawer_layout)).perform(open()) // Open Drawer
 
         // Start tasks screen.
         onView(withId(R.id.nav_view))
